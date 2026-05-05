@@ -4,8 +4,8 @@ local terminals = {}
 
 local split_cmds = {
   replace = "enew",
-  vertical = "vnew",
-  horizontal = "new",
+  vertical = "rightbelow vnew",
+  horizontal = "rightbelow new",
 }
 
 function M.open(name, opts)
