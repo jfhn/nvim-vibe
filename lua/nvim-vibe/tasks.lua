@@ -120,41 +120,48 @@ function M.create(project_name)
     "tags: []",
     "---",
     "",
+    "# ",
     "",
   }
 
+  local placeholder = dir .. "/new-task.md"
   local buf = vim.api.nvim_create_buf(true, false)
+  vim.api.nvim_buf_set_name(buf, placeholder)
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, template)
   vim.api.nvim_set_current_buf(buf)
   vim.bo[buf].filetype = "markdown"
 
-  -- cursor on last line for writing body
-  vim.api.nvim_win_set_cursor(0, { 6, 0 })
+  -- cursor after "# "
+  vim.api.nvim_win_set_cursor(0, { 6, 2 })
+  vim.cmd("startinsert!")
 
   vim.api.nvim_create_autocmd("BufWriteCmd", {
     buffer = buf,
-    once = true,
     callback = function()
       local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
       local content = table.concat(lines, "\n")
       local meta = parse_frontmatter(content)
 
-      local name = meta.body:match("^([^\n]+)") or "untitled"
-      local filename = name:gsub("[^%w_-]", "-"):gsub("-+", "-"):gsub("^-+", ""):gsub("-+$", "")
+      local title = meta.body:match("^#%s*(.-)%s*$") or meta.body:match("^([^\n]+)") or "untitled"
+      local filename = config.slugify(title)
       if filename == "" then filename = "untitled" end
       local filepath = dir .. "/" .. filename .. ".md"
 
-      -- avoid overwrite
       local n = 1
-      while vim.fn.filereadable(filepath) == 1 do
+      while vim.fn.filereadable(filepath) == 1 and filepath ~= vim.api.nvim_buf_get_name(buf) do
         filepath = dir .. "/" .. filename .. "-" .. n .. ".md"
         n = n + 1
+      end
+
+      -- remove old file if name changed
+      local old_name = vim.api.nvim_buf_get_name(buf)
+      if old_name ~= filepath and vim.fn.filereadable(old_name) == 1 then
+        vim.fn.delete(old_name)
       end
 
       vim.fn.writefile(lines, filepath)
       vim.bo[buf].modified = false
       vim.api.nvim_buf_set_name(buf, filepath)
-      vim.notify("nvim-vibe: task saved → " .. filepath)
     end,
   })
 end
