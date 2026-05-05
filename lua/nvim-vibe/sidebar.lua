@@ -156,6 +156,20 @@ function M.open()
     end
   end, { buffer = sidebar_buf })
 
+  vim.keymap.set("n", "d", function()
+    local line = vim.fn.line(".")
+    local action = actions_ref[line]
+    if not action then return end
+    if action.type == "task" then
+      vim.ui.select({ "Yes", "No" }, { prompt = "Delete task?" }, function(choice)
+        if choice == "Yes" then
+          tasks.remove(action.file)
+          M.render()
+        end
+      end)
+    end
+  end, { buffer = sidebar_buf })
+
   vim.keymap.set("n", "a", function()
     local line = vim.fn.line(".")
     local action = actions_ref[line]
