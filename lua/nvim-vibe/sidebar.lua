@@ -236,9 +236,31 @@ function M.render()
 end
 
 function M.close()
-  if sidebar_win and vim.api.nvim_win_is_valid(sidebar_win) then
+  if not sidebar_win or not vim.api.nvim_win_is_valid(sidebar_win) then
+    sidebar_win = nil
+    sidebar_buf = nil
+    return
+  end
+
+  local wins = vim.api.nvim_list_wins()
+  if #wins <= 1 then
+    -- last window: try switching to another buffer
+    local bufs = vim.tbl_filter(function(b)
+      return vim.api.nvim_buf_is_loaded(b)
+        and vim.bo[b].buflisted
+        and b ~= sidebar_buf
+    end, vim.api.nvim_list_bufs())
+
+    if #bufs > 0 then
+      vim.api.nvim_win_set_buf(sidebar_win, bufs[1])
+    else
+      vim.notify("nvim-vibe: no other buffers to switch to", vim.log.levels.WARN)
+      return
+    end
+  else
     vim.api.nvim_win_close(sidebar_win, true)
   end
+
   sidebar_win = nil
   sidebar_buf = nil
 end
