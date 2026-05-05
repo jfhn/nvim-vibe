@@ -51,7 +51,7 @@ function M.setup(opts)
     end
   end
 
-  terminal.setup()
+  terminal.setup(opts.terminal)
 
   require("telescope").load_extension("nvim-vibe")
 end

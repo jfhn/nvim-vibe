@@ -2,9 +2,16 @@ local M = {}
 
 local terminals = {}
 
+local split_cmds = {
+  replace = "enew",
+  vertical = "vnew",
+  horizontal = "new",
+}
+
 function M.open(name, opts)
   opts = opts or {}
   local shell = opts.shell or vim.o.shell
+  local split = opts.split or "replace"
 
   local existing = terminals[name]
   if existing and vim.api.nvim_buf_is_valid(existing.buf) then
@@ -17,7 +24,7 @@ function M.open(name, opts)
     return existing
   end
 
-  vim.cmd("enew")
+  vim.cmd(split_cmds[split] or "enew")
   local buf = vim.api.nvim_get_current_buf()
 
   vim.fn.termopen(shell, {
@@ -59,12 +66,33 @@ local function parse_args(raw)
   return name, shell
 end
 
-function M.setup()
-  vim.api.nvim_create_user_command("Term", function(args)
+local function make_handler(split)
+  return function(args)
     local name, shell = parse_args(args.fargs)
     name = name or ("terminal-" .. (#M.list() + 1))
-    M.open(name, { shell = shell })
-  end, { nargs = "*" })
+    M.open(name, { shell = shell, split = split })
+  end
+end
+
+local alias_map = {
+  replace = "replace",
+  vertical = "vertical",
+  horizontal = "horizontal",
+  r = "replace",
+  v = "vertical",
+  s = "horizontal",
+}
+
+function M.setup(opts)
+  opts = opts or {}
+  local nargs = { nargs = "*" }
+
+  vim.api.nvim_create_user_command("TermR", make_handler("replace"), nargs)
+  vim.api.nvim_create_user_command("TermV", make_handler("vertical"), nargs)
+  vim.api.nvim_create_user_command("TermS", make_handler("horizontal"), nargs)
+
+  local default = alias_map[opts.default or "replace"] or "replace"
+  vim.api.nvim_create_user_command("Term", make_handler(default), nargs)
 end
 
 return M
