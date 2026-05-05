@@ -110,6 +110,11 @@ function M.open()
   vim.wo[sidebar_win].signcolumn = "no"
   vim.wo[sidebar_win].winfixwidth = true
 
+  vim.api.nvim_create_autocmd("BufEnter", {
+    buffer = sidebar_buf,
+    callback = function() M.render() end,
+  })
+
   local actions_ref = {}
 
   vim.keymap.set("n", "<CR>", function()
