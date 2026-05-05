@@ -93,11 +93,22 @@ end
 
 function M.toggle(filepath)
   if vim.fn.filereadable(filepath) == 0 then return end
-  local content = table.concat(vim.fn.readfile(filepath), "\n")
-  local meta = parse_frontmatter(content)
-  meta.done = not meta.done
-  vim.fn.writefile(vim.split(serialize_task(meta), "\n"), filepath)
-  return meta.done
+  local lines = vim.fn.readfile(filepath)
+  local new_done = nil
+  for i, line in ipairs(lines) do
+    if line:match("^done:%s*") then
+      if line:match("^done:%s*true") then
+        lines[i] = "done: false"
+        new_done = false
+      else
+        lines[i] = "done: true"
+        new_done = true
+      end
+      break
+    end
+  end
+  vim.fn.writefile(lines, filepath)
+  return new_done
 end
 
 function M.remove(filepath)
