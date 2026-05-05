@@ -15,6 +15,11 @@ local function parse_frontmatter(content)
   local meta = { done = false, tags = {} }
   local body_start = 1
 
+  -- ensure trailing newline for consistent matching
+  if content:sub(-1) ~= "\n" then
+    content = content .. "\n"
+  end
+
   if content:sub(1, 4) == "---\n" then
     local end_pos = content:find("\n---\n", 5)
     if end_pos then
@@ -41,9 +46,8 @@ end
 local function serialize_task(meta)
   local lines = { "---" }
   table.insert(lines, "done: " .. (meta.done and "true" or "false"))
-  if meta.tags and #meta.tags > 0 then
-    table.insert(lines, "tags: [" .. table.concat(meta.tags, ", ") .. "]")
-  end
+  local tags = meta.tags or {}
+  table.insert(lines, "tags: [" .. table.concat(tags, ", ") .. "]")
   table.insert(lines, "---")
   table.insert(lines, "")
   table.insert(lines, meta.body or "")
