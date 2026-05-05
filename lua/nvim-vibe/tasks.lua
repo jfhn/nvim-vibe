@@ -156,15 +156,17 @@ function M.create(project_name)
         n = n + 1
       end
 
-      -- remove old file if name changed
+      local confirmed = vim.fn.input("Save as: ", filepath)
+      if confirmed == "" then return end
+
       local old_name = vim.api.nvim_buf_get_name(buf)
-      if old_name ~= filepath and vim.fn.filereadable(old_name) == 1 then
+      if old_name ~= confirmed and vim.fn.filereadable(old_name) == 1 then
         vim.fn.delete(old_name)
       end
 
-      vim.fn.writefile(lines, filepath)
+      vim.fn.writefile(lines, confirmed)
       vim.bo[buf].modified = false
-      vim.api.nvim_buf_set_name(buf, filepath)
+      vim.api.nvim_buf_set_name(buf, confirmed)
     end,
   })
 end
