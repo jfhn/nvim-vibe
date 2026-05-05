@@ -170,6 +170,20 @@ function M.open()
     end
   end, { buffer = sidebar_buf })
 
+  vim.keymap.set("n", "r", function()
+    local line = vim.fn.line(".")
+    local action = actions_ref[line]
+    if not action then return end
+    if action.type == "task" then
+      vim.ui.input({ prompt = "Rename to: ", default = action.file }, function(new_path)
+        if new_path and new_path ~= "" and new_path ~= action.file then
+          vim.fn.rename(action.file, new_path)
+          M.render()
+        end
+      end)
+    end
+  end, { buffer = sidebar_buf })
+
   vim.keymap.set("n", "a", function()
     local line = vim.fn.line(".")
     local action = actions_ref[line]
