@@ -62,7 +62,8 @@ function M.list(project_name)
     local content = table.concat(vim.fn.readfile(filepath), "\n")
     local meta = parse_frontmatter(content)
     meta.file = filepath
-    meta.name = vim.fn.fnamemodify(filepath, ":t:r")
+    local first_line = meta.body:match("^([^\n]+)") or ""
+    meta.name = first_line:match("^#%s+(.+)") or vim.fn.fnamemodify(filepath, ":t:r")
     table.insert(tasks, meta)
   end
   return tasks
@@ -142,7 +143,9 @@ function M.create(project_name)
       local content = table.concat(lines, "\n")
       local meta = parse_frontmatter(content)
 
-      local title = meta.body:match("^#%s*(.-)%s*$") or meta.body:match("^([^\n]+)") or "untitled"
+      local first_line = meta.body:match("^([^\n]+)") or ""
+      local title = first_line:match("^#%s+(.+)") or first_line
+      if title == "" then title = "untitled" end
       local filename = config.slugify(title)
       if filename == "" then filename = "untitled" end
       local filepath = dir .. "/" .. filename .. ".md"
