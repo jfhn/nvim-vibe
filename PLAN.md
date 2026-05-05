@@ -11,9 +11,9 @@
 -- ~/.local/nvim-vibe/projects.lua
 return {
   ["my-project"] = {
+    path = "/path/to/my-project",
     description = "My main project",
     worktrees = {
-      main = "/path/to/main",
       ["feat/x"] = "/path/to/feat-x",
     }
   },

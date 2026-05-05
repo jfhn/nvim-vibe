@@ -9,14 +9,14 @@ vim.api.nvim_create_user_command("NvimVibe", function(cmd)
   local input = require("nvim-vibe.input")
 
   if sub == "switch" then
-    if #args == 3 then
+    if #args >= 2 then
       vibe.switch(args[2], args[3])
     else
       vibe.pick()
     end
   elseif sub == "add-project" then
-    if #args >= 2 then
-      vibe.add_project(args[2], args[3] or "")
+    if #args >= 3 then
+      vibe.add_project(args[2], args[3], args[4] or "")
     else
       input.add_project()
     end

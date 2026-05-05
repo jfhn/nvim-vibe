@@ -14,6 +14,13 @@ function M.projects(opts)
 
   local entries = {}
   for pname, project in pairs(state.projects) do
+    table.insert(entries, {
+      display = pname,
+      project = pname,
+      worktree = nil,
+      path = project.path,
+      ordinal = pname,
+    })
     for wname, wpath in pairs(project.worktrees or {}) do
       table.insert(entries, {
         display = pname .. " / " .. wname,

@@ -20,6 +20,7 @@ function M.save(projects)
   local lines = { "return {" }
   for name, project in pairs(projects) do
     table.insert(lines, string.format('  [%q] = {', name))
+    table.insert(lines, string.format('    path = %q,', project.path or ""))
     table.insert(lines, string.format('    description = %q,', project.description or ""))
     table.insert(lines, "    worktrees = {")
     for wt_name, wt_path in pairs(project.worktrees or {}) do

@@ -2,7 +2,6 @@ local M = {}
 
 function M.prompt(opts, callback)
   opts = opts or {}
-  local title = opts.title or "Input"
   local fields = opts.fields or {}
 
   local results = {}
@@ -34,22 +33,21 @@ function M.prompt(opts, callback)
     end)
   end
 
-  vim.notify(title, vim.log.levels.INFO)
   next_field()
 end
 
 function M.add_project(callback)
   M.prompt({
-    title = "nvim-vibe: Add Project",
     fields = {
       { name = "name", prompt = "Project name: ", required = true },
+      { name = "path", prompt = "Project path: ", default = vim.fn.getcwd(), required = true },
       { name = "description", prompt = "Description (optional): ", required = false },
     },
   }, function(results)
     if not results then return end
     local core = require("nvim-vibe.core")
-    core.add_project(results.name, results.description)
-    vim.notify("nvim-vibe: project '" .. results.name .. "' added")
+    core.add_project(results.name, results.path, results.description)
+    vim.notify("nvim-vibe: project '" .. results.name .. "' added at " .. results.path)
     if callback then callback(results.name) end
   end)
 end
@@ -73,7 +71,6 @@ end
 
 function M._add_worktree_fields(project_name, callback)
   M.prompt({
-    title = "nvim-vibe: Add Worktree to '" .. project_name .. "'",
     fields = {
       { name = "name", prompt = "Worktree name (e.g. main, feat/x): ", required = true },
       { name = "path", prompt = "Path: ", default = vim.fn.getcwd(), required = true },
