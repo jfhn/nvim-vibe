@@ -74,7 +74,10 @@ function M.open()
     local line = vim.fn.line(".")
     local action = actions_ref[line]
     if not action then return end
-    if action.type == "worktree" then
+    if action.type == "project" then
+      core.switch(action.name)
+      M.render()
+    elseif action.type == "worktree" then
       core.switch(action.project, action.name)
       M.render()
     end
