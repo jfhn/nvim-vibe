@@ -48,6 +48,8 @@ vim.api.nvim_create_user_command("NvimVibe", function(cmd)
         end)
       end)
     end
+  elseif sub == "tasks" then
+    vibe.tasks(args[2])
   elseif sub == "sidebar" then
     vibe.toggle_sidebar()
   elseif sub == "pick" then
@@ -62,7 +64,7 @@ end, {
   complete = function(_, line)
     local parts = vim.split(line, "%s+", { trimempty = true })
     if #parts <= 2 then
-      return { "switch", "add-project", "remove-project", "add-worktree", "remove-worktree", "sidebar", "pick", "reload" }
+      return { "switch", "add-project", "remove-project", "add-worktree", "remove-worktree", "tasks", "sidebar", "pick", "reload" }
     end
     return {}
   end,

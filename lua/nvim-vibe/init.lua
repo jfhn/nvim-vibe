@@ -2,6 +2,7 @@ local core = require("nvim-vibe.core")
 local hooks = require("nvim-vibe.hooks")
 local sidebar = require("nvim-vibe.sidebar")
 local telescope = require("nvim-vibe.telescope")
+local tasks = require("nvim-vibe.tasks")
 
 local M = {}
 
@@ -19,6 +20,12 @@ M.open_sidebar = sidebar.open
 M.close_sidebar = sidebar.close
 
 M.pick = telescope.projects
+
+M.tasks = tasks.create
+M.add_task = tasks.add
+M.toggle_task = tasks.toggle
+M.remove_task = tasks.remove
+M.list_tasks = tasks.list
 
 M.on = hooks.register
 M.fire = hooks.fire

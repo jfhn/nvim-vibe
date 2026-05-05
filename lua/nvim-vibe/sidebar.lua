@@ -1,9 +1,14 @@
 local core = require("nvim-vibe.core")
+local tasks = require("nvim-vibe.tasks")
 
 local M = {}
 
 local sidebar_buf = nil
 local sidebar_win = nil
+
+-- expanded[project_name] = true/false (project level)
+-- expanded[project_name..":tasks"] = true/false
+-- expanded[project_name..":worktrees"] = true/false
 local expanded = {}
 
 local function is_open()
@@ -24,11 +29,50 @@ local function build_lines()
     table.insert(actions, { type = "project", name = pname })
 
     if expanded[pname] then
-      for wname, wpath in pairs(project.worktrees or {}) do
-        local wmarker = (pname == state.current_project and wname == state.current_worktree) and " ●" or ""
-        table.insert(lines, "  " .. wname .. wmarker)
-        table.insert(highlights, { line = #lines, hl = "Normal" })
-        table.insert(actions, { type = "worktree", project = pname, name = wname, path = wpath })
+      -- Tasks section
+      local tkey = pname .. ":tasks"
+      local ticon = expanded[tkey] and "▼" or "▶"
+      table.insert(lines, "  " .. ticon .. " Tasks")
+      table.insert(highlights, { line = #lines, hl = "Statement" })
+      table.insert(actions, { type = "section", key = tkey })
+
+      if expanded[tkey] then
+        local project_tasks = tasks.list(pname)
+        if #project_tasks == 0 then
+          table.insert(lines, "      (none)")
+          table.insert(highlights, { line = #lines, hl = "Comment" })
+          table.insert(actions, { type = "none" })
+        else
+          for _, task in ipairs(project_tasks) do
+            local check = task.done and "[x]" or "[ ]"
+            table.insert(lines, "      " .. check .. " " .. task.name)
+            table.insert(highlights, { line = #lines, hl = task.done and "Comment" or "Normal" })
+            table.insert(actions, { type = "task", project = pname, file = task.file })
+          end
+        end
+      end
+
+      -- Worktrees section
+      local wkey = pname .. ":worktrees"
+      local wicon = expanded[wkey] and "▼" or "▶"
+      table.insert(lines, "  " .. wicon .. " Worktrees")
+      table.insert(highlights, { line = #lines, hl = "Statement" })
+      table.insert(actions, { type = "section", key = wkey })
+
+      if expanded[wkey] then
+        local wts = project.worktrees or {}
+        if vim.tbl_isempty(wts) then
+          table.insert(lines, "      (none)")
+          table.insert(highlights, { line = #lines, hl = "Comment" })
+          table.insert(actions, { type = "none" })
+        else
+          for wname, _ in pairs(wts) do
+            local wmarker = (pname == state.current_project and wname == state.current_worktree) and " ●" or ""
+            table.insert(lines, "      " .. wname .. wmarker)
+            table.insert(highlights, { line = #lines, hl = "Normal" })
+            table.insert(actions, { type = "worktree", project = pname, name = wname })
+          end
+        end
       end
     end
   end
@@ -66,8 +110,6 @@ function M.open()
   vim.wo[sidebar_win].signcolumn = "no"
   vim.wo[sidebar_win].winfixwidth = true
 
-  M.render()
-
   local actions_ref = {}
 
   vim.keymap.set("n", "<CR>", function()
@@ -80,6 +122,9 @@ function M.open()
     elseif action.type == "worktree" then
       core.switch(action.project, action.name)
       M.render()
+    elseif action.type == "task" then
+      vim.cmd("wincmd l")
+      vim.cmd("edit " .. vim.fn.fnameescape(action.file))
     end
   end, { buffer = sidebar_buf })
 
@@ -90,12 +135,42 @@ function M.open()
     if action.type == "project" then
       expanded[action.name] = not expanded[action.name]
       M.render()
+    elseif action.type == "section" then
+      expanded[action.key] = not expanded[action.key]
+      M.render()
+    end
+  end, { buffer = sidebar_buf })
+
+  vim.keymap.set("n", "x", function()
+    local line = vim.fn.line(".")
+    local action = actions_ref[line]
+    if not action then return end
+    if action.type == "task" then
+      tasks.toggle(action.file)
+      M.render()
+    end
+  end, { buffer = sidebar_buf })
+
+  vim.keymap.set("n", "a", function()
+    local line = vim.fn.line(".")
+    local action = actions_ref[line]
+    if not action then return end
+    local project_name
+    if action.type == "project" then
+      project_name = action.name
+    elseif action.project then
+      project_name = action.project
+    elseif action.key then
+      project_name = action.key:match("^(.+):tasks$") or action.key:match("^(.+):worktrees$")
+    end
+    if project_name then
+      vim.cmd("wincmd l")
+      tasks.create(project_name)
     end
   end, { buffer = sidebar_buf })
 
   vim.keymap.set("n", "q", M.close, { buffer = sidebar_buf })
 
-  -- store ref for keymaps
   M._actions_ref = actions_ref
   M._update_actions = function(a)
     for k in pairs(actions_ref) do actions_ref[k] = nil end
