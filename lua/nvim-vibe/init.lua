@@ -3,6 +3,7 @@ local hooks = require("nvim-vibe.hooks")
 local sidebar = require("nvim-vibe.sidebar")
 local telescope = require("nvim-vibe.telescope")
 local tasks = require("nvim-vibe.tasks")
+local terminal = require("nvim-vibe.terminal")
 
 local M = {}
 
@@ -30,6 +31,9 @@ M.list_tasks = tasks.list
 M.on = hooks.register
 M.fire = hooks.fire
 
+M.term = terminal.open
+M.terminals = terminal.list
+
 function M.setup(opts)
   opts = opts or {}
   core.reload()
@@ -46,6 +50,8 @@ function M.setup(opts)
       end
     end
   end
+
+  terminal.setup(opts.terminal)
 
   require("telescope").load_extension("nvim-vibe")
 end
