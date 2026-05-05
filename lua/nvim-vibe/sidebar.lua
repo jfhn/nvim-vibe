@@ -184,6 +184,10 @@ function M.open()
     end
   end, { buffer = sidebar_buf })
 
+  vim.keymap.set("n", "<C-r>", function()
+    M.render()
+  end, { buffer = sidebar_buf })
+
   vim.keymap.set("n", "a", function()
     local line = vim.fn.line(".")
     local action = actions_ref[line]
