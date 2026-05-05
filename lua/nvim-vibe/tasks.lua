@@ -140,37 +140,50 @@ function M.create(project_name)
   vim.api.nvim_win_set_cursor(0, { 6, 2 })
   vim.cmd("startinsert!")
 
+  local saved = false
+
   vim.api.nvim_create_autocmd("BufWriteCmd", {
     buffer = buf,
     callback = function()
       local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
-      local content = table.concat(lines, "\n")
-      local meta = parse_frontmatter(content)
 
-      local first_line = meta.body:match("^([^\n]+)") or ""
-      local title = first_line:match("^#%s+(.+)") or first_line
-      if title == "" then title = "untitled" end
-      local filename = config.slugify(title)
-      if filename == "" then filename = "untitled" end
-      local filepath = dir .. "/" .. filename .. ".md"
+      if not saved then
+        -- find heading line to derive filename
+        local title = "untitled"
+        for _, line in ipairs(lines) do
+          local heading = line:match("^#%s+(.+)")
+          if heading then
+            title = heading
+            break
+          end
+        end
+        local filename = config.slugify(title)
+        if filename == "" then filename = "untitled" end
+        local filepath = dir .. "/" .. filename .. ".md"
 
-      local n = 1
-      while vim.fn.filereadable(filepath) == 1 and filepath ~= vim.api.nvim_buf_get_name(buf) do
-        filepath = dir .. "/" .. filename .. "-" .. n .. ".md"
-        n = n + 1
+        local n = 1
+        while vim.fn.filereadable(filepath) == 1 and filepath ~= vim.api.nvim_buf_get_name(buf) do
+          filepath = dir .. "/" .. filename .. "-" .. n .. ".md"
+          n = n + 1
+        end
+
+        local confirmed = vim.fn.input("Save as: ", filepath)
+        if confirmed == "" then return end
+
+        local old_name = vim.api.nvim_buf_get_name(buf)
+        if old_name ~= confirmed and vim.fn.filereadable(old_name) == 1 then
+          vim.fn.delete(old_name)
+        end
+
+        vim.fn.writefile(lines, confirmed)
+        vim.bo[buf].modified = false
+        vim.api.nvim_buf_set_name(buf, confirmed)
+        saved = true
+      else
+        -- subsequent saves: write to current name
+        vim.fn.writefile(lines, vim.api.nvim_buf_get_name(buf))
+        vim.bo[buf].modified = false
       end
-
-      local confirmed = vim.fn.input("Save as: ", filepath)
-      if confirmed == "" then return end
-
-      local old_name = vim.api.nvim_buf_get_name(buf)
-      if old_name ~= confirmed and vim.fn.filereadable(old_name) == 1 then
-        vim.fn.delete(old_name)
-      end
-
-      vim.fn.writefile(lines, confirmed)
-      vim.bo[buf].modified = false
-      vim.api.nvim_buf_set_name(buf, confirmed)
     end,
   })
 end
