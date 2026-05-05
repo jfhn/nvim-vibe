@@ -3,6 +3,10 @@ local M = {}
 local data_dir = vim.fn.expand("~/.local/nvim-vibe")
 local projects_file = data_dir .. "/projects.lua"
 
+function M.slugify(str)
+  return str:lower():gsub("[^%w]+", "-"):gsub("^-+", ""):gsub("-+$", "")
+end
+
 function M.load()
   if vim.fn.filereadable(projects_file) == 0 then
     return {}
@@ -20,6 +24,7 @@ function M.save(projects)
   local lines = { "return {" }
   for name, project in pairs(projects) do
     table.insert(lines, string.format('  [%q] = {', name))
+    table.insert(lines, string.format('    slug = %q,', project.slug or M.slugify(name)))
     table.insert(lines, string.format('    path = %q,', project.path or ""))
     table.insert(lines, string.format('    description = %q,', project.description or ""))
     table.insert(lines, "    worktrees = {")

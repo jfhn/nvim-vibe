@@ -77,6 +77,7 @@ end
 
 function M.add_project(name, path, description)
   state.projects[name] = {
+    slug = config.slugify(name),
     path = vim.fn.fnamemodify(path, ":p"):gsub("/$", ""),
     description = description or "",
     worktrees = {},
