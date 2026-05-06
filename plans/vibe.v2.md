@@ -146,6 +146,27 @@ Sidebar and notifications should consume derived status only:
 - `failed`
 - `cancelled`
 
+### Derived Status Rules
+
+**Sequence:**
+
+- `running` when child at cursor-index is running
+- `completed` when all children completed and index past last child
+- `blocked` when child at cursor-index is blocked
+- `waiting_review` when child at cursor-index is in review
+- `failed` decided by master (master handles failing children)
+
+**Parallel:**
+
+- `running` when any child is running
+- `completed` when all children completed
+- `blocked` when any child is blocked (surface first blocked child)
+- `failed` decided by master (master handles failing children)
+
+**Agent (leaf):**
+
+- derived directly from runtime state
+
 ### Block Reasons
 
 Blocked state should carry one primary reason:
@@ -176,22 +197,38 @@ Review is explicit.
 Early policy:
 
 - retry keeps same child identity
-- default retry budget is `1`
-- if the child fails again, the master must replace it or bubble failure upward
+- retry budget is configurable per node, default `1`
+- if the child exhausts its retry budget, the master must replace it or bubble failure upward
 - attempts are recorded in the event log, not by creating retry child nodes
 
 ## Storage Layout
 
 Store tasks under the existing root:
 
-`~/.local/nvim-vibe/tasks/<project>/<task>/`
+`~/.local/nvim-vibe/tasks/<project>/<root-id>-<slug>/`
 
 Each root task directory becomes the root of a task subtree.
+
+### Root Directory Naming
+
+Use stable id in directory name, not title alone.
+
+- root task dir should be `<root-id>-<slug>/`
+- `root-id` is canonical identity
+- `slug` is for readability only
+- title changes must not require moving the directory
+- collisions are avoided by identity, not by slug uniqueness
 
 Example:
 
 ```text
-~/.local/nvim-vibe/tasks/<project>/<task>/
+~/.local/nvim-vibe/tasks/my-project/task_1746547200_a3f-fix-sidebar-status/
+```
+
+Subtree example:
+
+```text
+~/.local/nvim-vibe/tasks/<project>/<root-id>-<slug>/
   node.md
   events.jsonl
   children/
@@ -246,19 +283,22 @@ Each node should have a `node.md` with frontmatter for machine state and a body 
 Early v1 fields:
 
 ```yaml
-id: task_123
+id: task_1746547200_a3f
 kind: sequence | parallel | agent
 title: string
 status: planned | ready | running | waiting_review | blocked | completed | failed | cancelled
 runtime_state: Planned | Active | Reviewing | Done | Failed | Cancelled
 block_reason:
-parent_id: task_122 | null
+parent_id: task_1746547100_b2e | null
 position: 0
 index: 1                # sequence only
 on_error: fail_fast     # sequence/parallel only
+retry_budget: 1         # configurable, default 1
 master:                 # sequence/parallel only
   backend: opencode
   agent: plan
+  session_id:           # populated when master session active
+  runtime_state:        # master session state: idle | active | failed
 agent:                  # leaf only
   backend: opencode
   role: coder
@@ -274,7 +314,9 @@ Notes:
 - `runtime_state` is the primary operational state
 - `block_reason` should be explicit when `status = blocked`
 - `attempt_count` supports same-identity retries
+- `retry_budget` is configurable per node, default `1`
 - `master` is present only on composite nodes
+- `master.session_id` and `master.runtime_state` track master session lifecycle separately from the node
 - `agent` is present only on leaf nodes
 
 Example:
@@ -421,6 +463,14 @@ Backends create sessions linked to nodes:
 
 This means masters are semantically first-class, but not represented as child nodes.
 
+### Master Session State
+
+Master session state is stored in the composite node's frontmatter under `master.session_id` and `master.runtime_state`, not in a separate node. This keeps the task tree clean (masters are not children) while still tracking master lifecycle explicitly.
+
+### Context Passing
+
+Context passing between sibling tasks is the master's responsibility. When a sequence child completes, the master reviews the result and passes relevant context to the next child's prompt. This keeps context flow explicit and auditable rather than implicit.
+
 ## Planner-First Workflow
 
 The first step of orchestration is always planning.
@@ -436,6 +486,57 @@ The first step of orchestration is always planning.
 7. `nvim-vibe` shows the proposal and marks the task `waiting_review`
 8. User approves or rejects
 9. On approval, the tree is materialized and execution begins
+
+### Plan Proposal Schema
+
+Planner proposals should use one canonical payload shape.
+
+Suggested v1 payload returned through `nvim_report_plan`:
+
+```json
+{
+  "title": "Implement OpenCode integration",
+  "summary": "Split work into event bridge and sidebar runtime UI.",
+  "root": {
+    "kind": "sequence",
+    "title": "Implement OpenCode integration",
+    "on_error": "fail_fast",
+    "retry_budget": 1,
+    "master": {
+      "backend": "opencode",
+      "agent": "plan"
+    },
+    "tasks": [
+      {
+        "kind": "agent",
+        "title": "Build event bridge",
+        "retry_budget": 1,
+        "agent": {
+          "backend": "opencode",
+          "role": "coder"
+        }
+      },
+      {
+        "kind": "agent",
+        "title": "Add sidebar runtime UI",
+        "retry_budget": 1,
+        "agent": {
+          "backend": "opencode",
+          "role": "coder"
+        }
+      }
+    ]
+  }
+}
+```
+
+Rules:
+
+- proposal payload must describe full subtree to materialize
+- proposal payload must not include node ids; `nvim-vibe` assigns ids on approval
+- proposal payload may include summaries, prompts, backend hints, and retry budgets
+- proposal payload must be validated before task tree materialization
+- rejected proposals stay in event log and summary, but do not mutate live tree
 
 ### Why Planner First
 
@@ -537,7 +638,7 @@ These tools let the runtime tell `nvim-vibe` things like:
 ### Reliability Goal
 
 The main goal is not strong sandbox security.
-The goal is reliable operator awareness.
+Main goal is reliable operator awareness.
 
 In practice this means:
 
@@ -545,6 +646,18 @@ In practice this means:
 - if an agent hits a permission prompt, `nvim-vibe` should know
 - if a planner produced a proposal, `nvim-vibe` should know
 - if a session failed or completed, `nvim-vibe` should know
+
+### Event Ingest Model
+
+All backend reports should enter one serialized ingest path inside `nvim-vibe`.
+
+- plugin events and custom semantic tool calls both feed same queue
+- queue append event to `events.jsonl` first
+- queue recompute affected node snapshots and cached derived status second
+- queue emits notifications after state commit succeeds
+- direct ad hoc writes to `node.md` or `events.jsonl` are not allowed outside this path
+
+This keeps snapshot cache, audit log, and notifications consistent even before `Parallel` exists.
 
 ## Notifications v1
 
@@ -657,9 +770,10 @@ Likely new modules:
 - show blocked reasons
 - add `Solve` action
 
-### Phase 4: Planner Workflow
+### Phase 4: Planner Workflow + Stub Backend
 
-- create planner root session
+- implement stub backend for session simulation
+- create planner root session (via stub)
 - ingest plan proposal
 - wait for human review
 - materialize approved subtree
@@ -699,10 +813,48 @@ Once that loop is stable, add `Parallel` scheduling and subtree mutation UI.
 - allow explicit subtree mutation
 - keep auditability and sequence cursor rules intact
 
+## Technical Decisions
+
+### ID Generation
+
+Use timestamp + short random suffix: `task_1746547200_a3f`, `evt_1746547200_b2e`.
+
+- sortable by creation time
+- no shared counter state needed
+- collision-safe for practical use
+
+### Frontmatter Parsing
+
+Hand-roll minimal YAML frontmatter parser in Lua. The frontmatter is flat key-value with one level of nesting (e.g. `master.backend`). No external C dependency (no `lyaml`). Full YAML is unnecessary for this schema.
+
+### Stub Backend
+
+Phase 4 (planner workflow) requires a backend before OpenCode integration (Phase 5). Use a stub backend that simulates session lifecycle and reports canned events. This unblocks planner workflow development and testing without OpenCode dependency.
+
+### Concurrent File Writes
+
+Do not allow concurrent snapshot writes.
+
+- use single in-process writer / ingest queue from first runtime phase
+- sequence-only mode still needs serialization because plugin events and semantic reports may arrive close together
+- when `Parallel` lands, keep same queue model or add file locking only if cross-process writers appear
+
+### Recovery Rules
+
+Restart and crash recovery must be explicit.
+
+- `events.jsonl` is source of audit truth
+- `node.md` is cached latest snapshot and may be regenerated
+- on startup, reload all tasks with non-terminal status and reconcile session state
+- if backend session is alive, reattach and update `master.session_id` or worker session metadata
+- if backend session is gone, transition node out of stale `running` into `blocked(external)` or `failed`, with event explaining reconciliation
+- recovery actions must append events; never silently rewrite state
+
 ## Key Design Decisions
 
 - **Projects** stay configured in `~/.local/nvim-vibe/projects.lua`
-- **Task roots** live under `~/.local/nvim-vibe/tasks/<project>/<task>/`
+- **Task roots** live under `~/.local/nvim-vibe/tasks/<project>/<root-id>-<slug>/`
+- **Root directory naming** uses `<root-id>-<slug>/`; id is canonical
 - **Task tree** is filesystem-shaped by directories
 - **Node snapshot** lives in `node.md`
 - **History** lives in `events.jsonl`
@@ -714,6 +866,14 @@ Once that loop is stable, add `Parallel` scheduling and subtree mutation UI.
 - **OpenCode bridge v1** uses plugin event forwarding and custom semantic tools
 - **Notifications v1** use `vim.notify` plus sidebar markers
 - **Notifications** are based on derived state transitions
+- **IDs** use timestamp + random suffix (`task_<epoch>_<hex>`)
+- **Frontmatter parser** is hand-rolled minimal YAML, no C deps
+- **Stub backend** unblocks Phase 4 before OpenCode integration
+- **Event ingest** uses one serialized writer path from start
+- **Recovery** reattaches or reconciles stale running sessions on startup
+- **Master state** stored in composite node frontmatter, not separate node
+- **Context passing** is master's responsibility between sequence siblings
+- **Retry budget** configurable per node, default 1
 
 ## Non-Goals For Early v2
 
