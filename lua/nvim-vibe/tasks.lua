@@ -1,4 +1,6 @@
 local config = require("nvim-vibe.config")
+local fm = require("nvim-vibe.frontmatter")
+local id = require("nvim-vibe.id")
 
 local M = {}
 
@@ -11,47 +13,29 @@ local function tasks_dir(project_name)
   return data_dir .. "/tasks/" .. slug
 end
 
-local function parse_frontmatter(content)
-  local meta = { done = false, tags = {} }
-  local body_start = 1
-
-  -- ensure trailing newline for consistent matching
-  if content:sub(-1) ~= "\n" then
-    content = content .. "\n"
-  end
-
-  if content:sub(1, 4) == "---\n" then
-    local end_pos = content:find("\n---\n", 5)
-    if end_pos then
-      local fm = content:sub(5, end_pos - 1)
-      for line in fm:gmatch("[^\n]+") do
-        local key, val = line:match("^(%w+):%s*(.+)$")
-        if key == "done" then
-          meta.done = val == "true"
-        elseif key == "tags" then
-          meta.tags = {}
-          for tag in val:gmatch("[%w_-]+") do
-            table.insert(meta.tags, tag)
-          end
-        end
-      end
-      body_start = end_pos + 5
-    end
-  end
-
-  meta.body = content:sub(body_start):gsub("^%s+", ""):gsub("%s+$", "")
+local function read_node(dir)
+  local path = dir .. "/node.md"
+  if vim.fn.filereadable(path) == 0 then return nil end
+  local content = table.concat(vim.fn.readfile(path), "\n")
+  local meta, body = fm.parse(content)
+  meta._dir = dir
+  meta._file = path
+  meta._body = body
   return meta
 end
 
-local function serialize_task(meta)
-  local lines = { "---" }
-  table.insert(lines, "done: " .. (meta.done and "true" or "false"))
-  local tags = meta.tags or {}
-  table.insert(lines, "tags: [" .. table.concat(tags, ", ") .. "]")
-  table.insert(lines, "---")
-  table.insert(lines, "")
-  table.insert(lines, meta.body or "")
-  return table.concat(lines, "\n")
+local function write_node(dir, meta, body)
+  vim.fn.mkdir(dir, "p")
+  local path = dir .. "/node.md"
+  local raw_meta = {}
+  for k, v in pairs(meta) do
+    if k:sub(1, 1) ~= "_" then
+      raw_meta[k] = v
+    end
+  end
+  local content = fm.serialize(raw_meta, body)
+  vim.fn.writefile(vim.split(content, "\n"), path)
+  return path
 end
 
 function M.list(project_name)
@@ -60,15 +44,19 @@ function M.list(project_name)
     return {}
   end
 
-  local files = vim.fn.glob(dir .. "/*.md", false, true)
+  local entries = vim.fn.readdir(dir)
   local tasks = {}
-  for _, filepath in ipairs(files) do
-    local content = table.concat(vim.fn.readfile(filepath), "\n")
-    local meta = parse_frontmatter(content)
-    meta.file = filepath
-    local first_line = meta.body:match("^([^\n]+)") or ""
-    meta.name = first_line:match("^#%s+(.+)") or vim.fn.fnamemodify(filepath, ":t:r")
-    table.insert(tasks, meta)
+  for _, entry in ipairs(entries) do
+    local task_dir = dir .. "/" .. entry
+    if vim.fn.isdirectory(task_dir) == 1 then
+      local node = read_node(task_dir)
+      if node then
+        node.name = node.title or entry
+        node.file = node._file
+        node.done = node.status == "completed"
+        table.insert(tasks, node)
+      end
+    end
   end
   return tasks
 end
@@ -76,44 +64,51 @@ end
 function M.add(project_name, name, opts)
   opts = opts or {}
   local dir = tasks_dir(project_name)
-  vim.fn.mkdir(dir, "p")
 
-  local filename = name:gsub("[^%w_-]", "-"):gsub("-+", "-")
-  local filepath = dir .. "/" .. filename .. ".md"
+  local task_id = id.generate("task")
+  local slug = config.slugify(name)
+  if slug == "" then slug = "untitled" end
+  local task_dir = dir .. "/" .. task_id .. "-" .. slug
 
+  local now = os.date("!%Y-%m-%dT%H:%M:%SZ")
   local meta = {
-    done = false,
-    tags = opts.tags or {},
-    body = opts.body or name,
+    id = task_id,
+    kind = opts.kind or "agent",
+    title = name,
+    status = "planned",
+    runtime_state = "Planned",
+    retry_budget = opts.retry_budget or 1,
+    attempt_count = 0,
+    updated_at = now,
   }
 
-  vim.fn.writefile(vim.split(serialize_task(meta), "\n"), filepath)
-  return filepath
+  local body = opts.body or ("# " .. name .. "\n")
+  write_node(task_dir, meta, body)
+  return task_dir
 end
 
 function M.toggle(filepath)
-  if vim.fn.filereadable(filepath) == 0 then return end
-  local lines = vim.fn.readfile(filepath)
-  local new_done = nil
-  for i, line in ipairs(lines) do
-    if line:match("^done:%s*") then
-      if line:match("^done:%s*true") then
-        lines[i] = "done: false"
-        new_done = false
-      else
-        lines[i] = "done: true"
-        new_done = true
-      end
-      break
-    end
+  local dir = vim.fn.fnamemodify(filepath, ":h")
+  local node = read_node(dir)
+  if not node then return end
+
+  if node.status == "completed" then
+    node.status = "planned"
+    node.runtime_state = "Planned"
+  else
+    node.status = "completed"
+    node.runtime_state = "Done"
   end
-  vim.fn.writefile(lines, filepath)
-  return new_done
+  node.updated_at = os.date("!%Y-%m-%dT%H:%M:%SZ")
+
+  write_node(dir, node, node._body)
+  return node.status == "completed"
 end
 
 function M.remove(filepath)
-  if vim.fn.filereadable(filepath) == 1 then
-    vim.fn.delete(filepath)
+  local dir = vim.fn.fnamemodify(filepath, ":h")
+  if vim.fn.isdirectory(dir) == 1 then
+    vim.fn.delete(dir, "rf")
   end
 end
 
@@ -130,25 +125,35 @@ function M.create(project_name)
   local dir = tasks_dir(project_name)
   vim.fn.mkdir(dir, "p")
 
-  local template = {
-    "---",
-    "done: false",
-    "tags: []",
-    "---",
-    "",
-    "# ",
-    "",
-  }
+  local task_id = id.generate("task")
+  local now = os.date("!%Y-%m-%dT%H:%M:%SZ")
 
-  local placeholder = dir .. "/new-task.md"
+  local template = fm.serialize({
+    id = task_id,
+    kind = "agent",
+    title = "",
+    status = "planned",
+    runtime_state = "Planned",
+    retry_budget = 1,
+    attempt_count = 0,
+    updated_at = now,
+  }, "# \n")
+
+  local placeholder = dir .. "/new-task/node.md"
+  vim.fn.mkdir(dir .. "/new-task", "p")
   local buf = vim.api.nvim_create_buf(true, false)
   vim.api.nvim_buf_set_name(buf, placeholder)
-  vim.api.nvim_buf_set_lines(buf, 0, -1, false, template)
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, vim.split(template, "\n"))
   vim.api.nvim_set_current_buf(buf)
   vim.bo[buf].filetype = "markdown"
 
-  -- cursor after "# "
-  vim.api.nvim_win_set_cursor(0, { 6, 2 })
+  local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+  for i, line in ipairs(lines) do
+    if line:match("^# $") then
+      vim.api.nvim_win_set_cursor(0, { i, 2 })
+      break
+    end
+  end
   vim.cmd("startinsert!")
 
   local saved = false
@@ -156,47 +161,63 @@ function M.create(project_name)
   vim.api.nvim_create_autocmd("BufWriteCmd", {
     buffer = buf,
     callback = function()
-      local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+      local buf_lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+      local content = table.concat(buf_lines, "\n")
+      local meta, body = fm.parse(content)
 
       if not saved then
-        -- find heading line to derive filename
-        local title = "untitled"
-        for _, line in ipairs(lines) do
-          local heading = line:match("^#%s+(.+)")
+        local title = meta.title
+        if (not title or title == "") and body then
+          local heading = body:match("^#%s+(.+)")
           if heading then
             title = heading
-            break
           end
         end
-        local filename = config.slugify(title)
-        if filename == "" then filename = "untitled" end
-        local filepath = dir .. "/" .. filename .. ".md"
+        title = title or "untitled"
 
-        local n = 1
-        while vim.fn.filereadable(filepath) == 1 and filepath ~= vim.api.nvim_buf_get_name(buf) do
-          filepath = dir .. "/" .. filename .. "-" .. n .. ".md"
-          n = n + 1
+        -- update title in frontmatter
+        meta.title = title
+        meta.id = meta.id or task_id
+
+        local slug = config.slugify(title)
+        if slug == "" then slug = "untitled" end
+        local task_dir = dir .. "/" .. meta.id .. "-" .. slug
+
+        vim.fn.mkdir(task_dir, "p")
+        local filepath = task_dir .. "/node.md"
+
+        local raw_meta = {}
+        for k, v in pairs(meta) do
+          if k:sub(1, 1) ~= "_" then
+            raw_meta[k] = v
+          end
         end
 
-        local confirmed = vim.fn.input("Save as: ", filepath)
-        if confirmed == "" then return end
-
-        local old_name = vim.api.nvim_buf_get_name(buf)
-        if old_name ~= confirmed and vim.fn.filereadable(old_name) == 1 then
-          vim.fn.delete(old_name)
-        end
-
-        vim.fn.writefile(lines, confirmed)
+        vim.fn.writefile(vim.split(fm.serialize(raw_meta, body), "\n"), filepath)
         vim.bo[buf].modified = false
-        vim.api.nvim_buf_set_name(buf, confirmed)
+
+        -- clean up placeholder dir
+        local old_dir = dir .. "/new-task"
+        if vim.fn.isdirectory(old_dir) == 1 then
+          vim.fn.delete(old_dir, "rf")
+        end
+
+        vim.api.nvim_buf_set_name(buf, filepath)
         saved = true
       else
-        -- subsequent saves: write to current name
-        vim.fn.writefile(lines, vim.api.nvim_buf_get_name(buf))
+        vim.fn.writefile(buf_lines, vim.api.nvim_buf_get_name(buf))
         vim.bo[buf].modified = false
       end
     end,
   })
+end
+
+function M.read_node(dir)
+  return read_node(dir)
+end
+
+function M.write_node(dir, meta, body)
+  return write_node(dir, meta, body)
 end
 
 return M

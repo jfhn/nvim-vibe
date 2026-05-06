@@ -27,6 +27,8 @@ M.add_task = tasks.add
 M.toggle_task = tasks.toggle
 M.remove_task = tasks.remove
 M.list_tasks = tasks.list
+M.read_node = tasks.read_node
+M.write_node = tasks.write_node
 
 M.on = hooks.register
 M.fire = hooks.fire
