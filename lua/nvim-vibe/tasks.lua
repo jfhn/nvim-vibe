@@ -167,13 +167,13 @@ function M.create(project_name)
 
       if not saved then
         local title = meta.title
-        if (not title or title == "") and body then
+        if (not title or title == "" or title == vim.NIL) and body then
           local heading = body:match("^#%s+(.+)")
           if heading then
             title = heading
           end
         end
-        title = title or "untitled"
+        if not title or title == vim.NIL then title = "untitled" end
 
         -- update title in frontmatter
         meta.title = title
