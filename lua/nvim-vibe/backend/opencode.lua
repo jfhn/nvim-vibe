@@ -359,15 +359,12 @@ function M._try_advance_parent(child_dir)
   end
 end
 
-function M.execute(task_dir)
+function M._find_exec_leaf(task_dir)
   local node = tree.read_node(task_dir)
   if not node then return nil, "node not found" end
 
   if tree.is_leaf(task_dir) then
-    if (node.runtime_state or "Planned") == "Planned" then
-      runtime.transition(task_dir, "Active", { reason = "execution started" })
-    end
-    return M.start(task_dir)
+    return task_dir, node
   end
 
   if node.kind == "sequence" then
@@ -378,10 +375,70 @@ function M.execute(task_dir)
     local idx = node.index or 0
     local child = children[idx + 1]
     if not child then return nil, "no child at index " .. idx end
-    return M.execute(child._dir)
+    return M._find_exec_leaf(child._dir)
   end
 
   return nil, "unsupported kind for execution: " .. (node.kind or "nil")
+end
+
+function M.execute(task_dir)
+  local leaf_dir, leaf_or_err = M._find_exec_leaf(task_dir)
+  if not leaf_dir then return nil, leaf_or_err end
+
+  local node = leaf_or_err
+  if (node.runtime_state or "Planned") == "Planned" then
+    runtime.transition(leaf_dir, "Active", { reason = "execution started" })
+  elseif node.runtime_state ~= "Active" then
+    return nil, "task not in Planned or Active state"
+  end
+
+  if sessions[leaf_dir] then
+    return nil, "session already active for this task"
+  end
+
+  if vim.fn.executable(M.config.command) == 0 then
+    return nil, "opencode not found in PATH"
+  end
+
+  local prompt = M._build_exec_prompt(node)
+  local project_dir = M._project_dir(leaf_dir)
+  local model = M.config.model
+
+  local cmd = {
+    M.config.command, "run",
+    "--model", model,
+    "--dir", project_dir,
+    prompt,
+  }
+
+  local terminal = require("nvim-vibe.terminal")
+  local term_name = "opencode: " .. (node.title or node.id or "task")
+
+  sessions[leaf_dir] = {
+    task_dir = leaf_dir,
+    node_id = node.id,
+    status = "running",
+    text = "",
+  }
+
+  events.append(leaf_dir, {
+    task_id = node.id,
+    type = "session_attached",
+    payload = { backend = "opencode", model = model, interactive = true },
+  })
+
+  vim.cmd("wincmd l")
+  terminal.open(term_name, {
+    cmd = cmd,
+    split = "horizontal",
+    on_exit = function(exit_code)
+      vim.schedule(function()
+        M._handle_exit(leaf_dir, sessions[leaf_dir] or { text = "" }, exit_code)
+      end)
+    end,
+  })
+
+  return sessions[leaf_dir]
 end
 
 function M.stop(task_dir)

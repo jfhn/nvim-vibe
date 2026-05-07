@@ -10,7 +10,7 @@ local split_cmds = {
 
 function M.open(name, opts)
   opts = opts or {}
-  local shell = opts.shell or vim.o.shell
+  local cmd = opts.cmd or opts.shell or vim.o.shell
   local split = opts.split or "replace"
 
   local existing = terminals[name]
@@ -27,16 +27,20 @@ function M.open(name, opts)
   vim.cmd(split_cmds[split] or "enew")
   local buf = vim.api.nvim_get_current_buf()
 
-  vim.fn.termopen(shell, {
-    on_exit = function()
+  local user_on_exit = opts.on_exit
+  vim.fn.termopen(cmd, {
+    on_exit = function(_, exit_code, _)
       terminals[name] = nil
+      if user_on_exit then
+        user_on_exit(exit_code)
+      end
     end,
   })
 
   vim.api.nvim_buf_set_name(buf, "term://" .. name)
   vim.cmd("startinsert")
 
-  terminals[name] = { buf = buf, name = name, shell = shell }
+  terminals[name] = { buf = buf, name = name, cmd = cmd }
   return terminals[name]
 end
 
