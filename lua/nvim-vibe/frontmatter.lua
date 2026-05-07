@@ -9,7 +9,7 @@ function M.parse(content)
     return {}, content
   end
 
-  local end_pos = content:find("\n---\n", 5)
+  local end_pos = content:find("\n---\n", 5, true)
   if not end_pos then
     return {}, content
   end
