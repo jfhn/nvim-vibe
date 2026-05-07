@@ -1,5 +1,6 @@
 local core = require("nvim-vibe.core")
 local tasks = require("nvim-vibe.tasks")
+local tree = require("nvim-vibe.task_tree")
 
 local M = {}
 
@@ -39,6 +40,43 @@ local status_hl = {
 
 local kind_markers = { agent = "A", sequence = "S", parallel = "P" }
 
+local function render_task_node(node, project, depth, lines, highlights, actions)
+  local indent = string.rep(" ", 6 + depth * 2)
+  local s = node.status or "planned"
+  local si = status_icons[s] or "?"
+  local km = kind_markers[node.kind] or "A"
+  local has_children = not tree.is_leaf(node._dir)
+
+  local label = indent
+  if has_children then
+    local ekey = "task:" .. node._dir
+    label = label .. (expanded[ekey] and "▼ " or "▶ ")
+  end
+  label = label .. km .. " " .. si .. " " .. (node.title or node.name or "untitled")
+
+  if s == "blocked" and node.block_reason and node.block_reason ~= vim.NIL then
+    label = label .. " (" .. tostring(node.block_reason) .. ")"
+  end
+
+  table.insert(lines, label)
+  table.insert(highlights, { line = #lines, hl = status_hl[s] or "Normal" })
+  table.insert(actions, {
+    type = "task",
+    project = project,
+    file = node._file,
+    dir = node._dir,
+    kind = node.kind,
+    status = s,
+  })
+
+  if has_children and expanded["task:" .. node._dir] then
+    local children = tree.children(node._dir)
+    for _, child in ipairs(children) do
+      render_task_node(child, project, depth + 1, lines, highlights, actions)
+    end
+  end
+end
+
 local function build_lines()
   local lines = {}
   local highlights = {}
@@ -68,12 +106,7 @@ local function build_lines()
           table.insert(actions, { type = "none" })
         else
           for _, task in ipairs(project_tasks) do
-            local s = task.status or "planned"
-            local si = status_icons[s] or "?"
-            local km = kind_markers[task.kind] or "A"
-            table.insert(lines, "      " .. km .. " " .. si .. " " .. task.name)
-            table.insert(highlights, { line = #lines, hl = status_hl[s] or "Normal" })
-            table.insert(actions, { type = "task", project = pname, file = task.file })
+            render_task_node(task, pname, 0, lines, highlights, actions)
           end
         end
       end
@@ -169,6 +202,10 @@ function M.open()
     elseif action.type == "section" then
       expanded[action.key] = not expanded[action.key]
       M.render()
+    elseif action.type == "task" and action.dir then
+      local ekey = "task:" .. action.dir
+      expanded[ekey] = not expanded[ekey]
+      M.render()
     end
   end, { buffer = sidebar_buf })
 
@@ -230,6 +267,36 @@ function M.open()
       vim.cmd("wincmd l")
       tasks.create(project_name)
     end
+  end, { buffer = sidebar_buf })
+
+  vim.keymap.set("n", "s", function()
+    local line = vim.fn.line(".")
+    local action = actions_ref[line]
+    if not action or action.type ~= "task" then return end
+    if not action.dir then return end
+    vim.notify("nvim-vibe: solve not yet implemented (Phase 4)", vim.log.levels.INFO)
+  end, { buffer = sidebar_buf })
+
+  vim.keymap.set("n", "gp", function()
+    local line = vim.fn.line(".")
+    local action = actions_ref[line]
+    if not action or action.type ~= "task" then return end
+    if action.status ~= "waiting_review" then
+      vim.notify("nvim-vibe: task not awaiting review", vim.log.levels.WARN)
+      return
+    end
+    vim.notify("nvim-vibe: approve not yet implemented (Phase 4)", vim.log.levels.INFO)
+  end, { buffer = sidebar_buf })
+
+  vim.keymap.set("n", "gr", function()
+    local line = vim.fn.line(".")
+    local action = actions_ref[line]
+    if not action or action.type ~= "task" then return end
+    if action.status ~= "waiting_review" then
+      vim.notify("nvim-vibe: task not awaiting review", vim.log.levels.WARN)
+      return
+    end
+    vim.notify("nvim-vibe: reject not yet implemented (Phase 4)", vim.log.levels.INFO)
   end, { buffer = sidebar_buf })
 
   vim.keymap.set("n", "q", M.close, { buffer = sidebar_buf })
