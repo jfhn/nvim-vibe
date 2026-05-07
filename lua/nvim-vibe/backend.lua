@@ -17,4 +17,32 @@ function M.solve(task_dir, backend_name)
   return b.solve(task_dir)
 end
 
+function M.start(task_dir, backend_name, opts)
+  local b = backends[backend_name or "opencode"]
+  if not b then return nil, "unknown backend: " .. (backend_name or "opencode") end
+  if not b.start then return nil, "backend does not support start" end
+  return b.start(task_dir, opts)
+end
+
+function M.stop(task_dir, backend_name)
+  local b = backends[backend_name or "opencode"]
+  if not b then return nil, "unknown backend: " .. (backend_name or "opencode") end
+  if not b.stop then return nil, "backend does not support stop" end
+  return b.stop(task_dir)
+end
+
+function M.execute(task_dir, backend_name)
+  local b = backends[backend_name or "opencode"]
+  if not b then return nil, "unknown backend: " .. (backend_name or "opencode") end
+  if not b.execute then return nil, "backend does not support execute" end
+  return b.execute(task_dir)
+end
+
+function M.session(task_dir, backend_name)
+  local b = backends[backend_name or "opencode"]
+  if not b then return nil end
+  if not b.session then return nil end
+  return b.session(task_dir)
+end
+
 return M

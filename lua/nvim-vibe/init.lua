@@ -68,6 +68,13 @@ function M.setup(opts)
 
   backend_mod.register("stub", require("nvim-vibe.backend.stub"))
 
+  local opencode = require("nvim-vibe.backend.opencode")
+  if opts.opencode then
+    if opts.opencode.model then opencode.config.model = opts.opencode.model end
+    if opts.opencode.command then opencode.config.command = opts.opencode.command end
+  end
+  backend_mod.register("opencode", opencode)
+
   require("telescope").load_extension("nvim-vibe")
 end
 

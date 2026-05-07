@@ -9,6 +9,7 @@ tests=(
   test.test_tree
   test.test_runtime
   test.test_planner
+  test.test_opencode
 )
 
 exit_code=0

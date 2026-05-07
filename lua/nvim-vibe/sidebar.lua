@@ -312,6 +312,19 @@ function M.open()
     M.render()
   end, { buffer = sidebar_buf })
 
+  vim.keymap.set("n", "ge", function()
+    local line = vim.fn.line(".")
+    local action = actions_ref[line]
+    if not action or action.type ~= "task" then return end
+    if not action.dir then return end
+    local backend_mod = require("nvim-vibe.backend")
+    local _, err = backend_mod.execute(action.dir)
+    if err then
+      vim.notify("nvim-vibe: execute failed: " .. err, vim.log.levels.ERROR)
+    end
+    M.render()
+  end, { buffer = sidebar_buf })
+
   vim.keymap.set("n", "q", M.close, { buffer = sidebar_buf })
 
   M._actions_ref = actions_ref
