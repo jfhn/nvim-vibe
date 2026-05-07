@@ -1,6 +1,8 @@
 local config = require("nvim-vibe.config")
 local fm = require("nvim-vibe.frontmatter")
 local id = require("nvim-vibe.id")
+local tree = require("nvim-vibe.task_tree")
+local events = require("nvim-vibe.task_events")
 
 local M = {}
 
@@ -11,31 +13,6 @@ local function tasks_dir(project_name)
   local project = core.state().projects[project_name]
   local slug = (project and project.slug) or config.slugify(project_name)
   return data_dir .. "/tasks/" .. slug
-end
-
-local function read_node(dir)
-  local path = dir .. "/node.md"
-  if vim.fn.filereadable(path) == 0 then return nil end
-  local content = table.concat(vim.fn.readfile(path), "\n")
-  local meta, body = fm.parse(content)
-  meta._dir = dir
-  meta._file = path
-  meta._body = body
-  return meta
-end
-
-local function write_node(dir, meta, body)
-  vim.fn.mkdir(dir, "p")
-  local path = dir .. "/node.md"
-  local raw_meta = {}
-  for k, v in pairs(meta) do
-    if k:sub(1, 1) ~= "_" then
-      raw_meta[k] = v
-    end
-  end
-  local content = fm.serialize(raw_meta, body)
-  vim.fn.writefile(vim.split(content, "\n"), path)
-  return path
 end
 
 function M.list(project_name)
@@ -49,7 +26,7 @@ function M.list(project_name)
   for _, entry in ipairs(entries) do
     local task_dir = dir .. "/" .. entry
     if vim.fn.isdirectory(task_dir) == 1 then
-      local node = read_node(task_dir)
+      local node = tree.read_node(task_dir)
       if node then
         node.name = node.title or entry
         node.file = node._file
@@ -83,15 +60,23 @@ function M.add(project_name, name, opts)
   }
 
   local body = opts.body or ("# " .. name .. "\n")
-  write_node(task_dir, meta, body)
+  tree.write_node(task_dir, meta, body)
+
+  events.append(task_dir, {
+    task_id = task_id,
+    type = "node_created",
+    payload = { kind = meta.kind, title = name },
+  })
+
   return task_dir
 end
 
 function M.toggle(filepath)
   local dir = vim.fn.fnamemodify(filepath, ":h")
-  local node = read_node(dir)
+  local node = tree.read_node(dir)
   if not node then return end
 
+  local old_state = node.runtime_state or "Planned"
   if node.status == "completed" then
     node.status = "planned"
     node.runtime_state = "Planned"
@@ -101,12 +86,33 @@ function M.toggle(filepath)
   end
   node.updated_at = os.date("!%Y-%m-%dT%H:%M:%SZ")
 
-  write_node(dir, node, node._body)
+  tree.write_node(dir, node, node._body)
+
+  events.append(dir, {
+    task_id = node.id,
+    type = "node_status_changed",
+    payload = {
+      from = old_state,
+      to = node.runtime_state,
+      status = node.status,
+    },
+  })
+
   return node.status == "completed"
 end
 
 function M.remove(filepath)
   local dir = vim.fn.fnamemodify(filepath, ":h")
+  local node = tree.read_node(dir)
+
+  if node then
+    events.append(dir, {
+      task_id = node.id,
+      type = "node_status_changed",
+      payload = { from = node.runtime_state, to = "Cancelled", status = "cancelled", reason = "removed" },
+    })
+  end
+
   if vim.fn.isdirectory(dir) == 1 then
     vim.fn.delete(dir, "rf")
   end
@@ -175,7 +181,6 @@ function M.create(project_name)
         end
         if not title or title == vim.NIL then title = "untitled" end
 
-        -- update title in frontmatter
         meta.title = title
         meta.id = meta.id or task_id
 
@@ -196,7 +201,6 @@ function M.create(project_name)
         vim.fn.writefile(vim.split(fm.serialize(raw_meta, body), "\n"), filepath)
         vim.bo[buf].modified = false
 
-        -- clean up placeholder dir
         local old_dir = dir .. "/new-task"
         if vim.fn.isdirectory(old_dir) == 1 then
           vim.fn.delete(old_dir, "rf")
@@ -204,6 +208,12 @@ function M.create(project_name)
 
         vim.api.nvim_buf_set_name(buf, filepath)
         saved = true
+
+        events.append(task_dir, {
+          task_id = meta.id,
+          type = "node_created",
+          payload = { kind = meta.kind or "agent", title = title },
+        })
       else
         vim.fn.writefile(buf_lines, vim.api.nvim_buf_get_name(buf))
         vim.bo[buf].modified = false
@@ -213,11 +223,11 @@ function M.create(project_name)
 end
 
 function M.read_node(dir)
-  return read_node(dir)
+  return tree.read_node(dir)
 end
 
 function M.write_node(dir, meta, body)
-  return write_node(dir, meta, body)
+  return tree.write_node(dir, meta, body)
 end
 
 return M

@@ -15,6 +15,30 @@ local function is_open()
   return sidebar_win and vim.api.nvim_win_is_valid(sidebar_win)
 end
 
+local status_icons = {
+  planned        = "○",
+  ready          = "◎",
+  running        = "●",
+  waiting_review = "?",
+  blocked        = "⊘",
+  completed      = "✓",
+  failed         = "✗",
+  cancelled      = "-",
+}
+
+local status_hl = {
+  planned        = "Comment",
+  ready          = "Normal",
+  running        = "Function",
+  waiting_review = "WarningMsg",
+  blocked        = "ErrorMsg",
+  completed      = "Comment",
+  failed         = "ErrorMsg",
+  cancelled      = "Comment",
+}
+
+local kind_markers = { agent = "A", sequence = "S", parallel = "P" }
+
 local function build_lines()
   local lines = {}
   local highlights = {}
@@ -44,9 +68,11 @@ local function build_lines()
           table.insert(actions, { type = "none" })
         else
           for _, task in ipairs(project_tasks) do
-            local check = task.done and "[x]" or "[ ]"
-            table.insert(lines, "      " .. check .. " " .. task.name)
-            table.insert(highlights, { line = #lines, hl = task.done and "Comment" or "Normal" })
+            local s = task.status or "planned"
+            local si = status_icons[s] or "?"
+            local km = kind_markers[task.kind] or "A"
+            table.insert(lines, "      " .. km .. " " .. si .. " " .. task.name)
+            table.insert(highlights, { line = #lines, hl = status_hl[s] or "Normal" })
             table.insert(actions, { type = "task", project = pname, file = task.file })
           end
         end

@@ -4,6 +4,9 @@ local sidebar = require("nvim-vibe.sidebar")
 local telescope = require("nvim-vibe.telescope")
 local tasks = require("nvim-vibe.tasks")
 local terminal = require("nvim-vibe.terminal")
+local task_tree = require("nvim-vibe.task_tree")
+local task_runtime = require("nvim-vibe.task_runtime")
+local task_events = require("nvim-vibe.task_events")
 
 local M = {}
 
@@ -27,8 +30,12 @@ M.add_task = tasks.add
 M.toggle_task = tasks.toggle
 M.remove_task = tasks.remove
 M.list_tasks = tasks.list
-M.read_node = tasks.read_node
-M.write_node = tasks.write_node
+M.read_node = task_tree.read_node
+M.write_node = task_tree.write_node
+
+M.tree = task_tree
+M.runtime = task_runtime
+M.events = task_events
 
 M.on = hooks.register
 M.fire = hooks.fire
