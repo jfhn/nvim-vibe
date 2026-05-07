@@ -325,6 +325,8 @@ function M.open()
     M.render()
   end, { buffer = sidebar_buf })
 
+  vim.keymap.set("n", "?", M.show_help, { buffer = sidebar_buf })
+
   vim.keymap.set("n", "q", M.close, { buffer = sidebar_buf })
 
   M._actions_ref = actions_ref
@@ -356,6 +358,116 @@ function M.render()
     for i, a in ipairs(actions) do indexed[i] = a end
     M._update_actions(indexed)
   end
+end
+
+local help_groups = {
+  {
+    title = "Navigation",
+    keys = {
+      { "<tab>", "Toggle expand" },
+      { "<cr>", "Open / switch" },
+      { "<c-r>", "Refresh" },
+      { "q", "Close sidebar" },
+      { "?", "Show help" },
+    },
+  },
+  {
+    title = "Tasks",
+    keys = {
+      { "a", "Add task" },
+      { "x", "Toggle done" },
+      { "d", "Delete task" },
+      { "r", "Rename task" },
+    },
+  },
+  {
+    title = "Planning",
+    keys = {
+      { "s", "Solve (plan)" },
+      { "gp", "Approve plan" },
+      { "gr", "Reject plan" },
+      { "ge", "Execute task" },
+    },
+  },
+}
+
+function M.show_help()
+  local col_width = 22
+  local lines = {}
+  local highlights = {}
+  local ns_name = "nvim_vibe_help"
+
+  local titles = {}
+  for _, g in ipairs(help_groups) do
+    table.insert(titles, g.title)
+  end
+  local header = ""
+  for _, t in ipairs(titles) do
+    header = header .. t .. string.rep(" ", col_width - #t)
+  end
+  table.insert(lines, header)
+  table.insert(highlights, {})
+
+  local max_rows = 0
+  for _, g in ipairs(help_groups) do
+    if #g.keys > max_rows then max_rows = #g.keys end
+  end
+
+  for row = 1, max_rows do
+    local line = ""
+    local row_hl = {}
+    for _, g in ipairs(help_groups) do
+      local entry = g.keys[row]
+      local col_start = #line
+      if entry then
+        local key, desc = entry[1], entry[2]
+        local cell = key .. " " .. desc
+        table.insert(row_hl, { col = col_start, len = #key })
+        line = line .. cell .. string.rep(" ", math.max(0, col_width - #cell))
+      else
+        line = line .. string.rep(" ", col_width)
+      end
+    end
+    table.insert(lines, line)
+    table.insert(highlights, row_hl)
+  end
+
+  local buf = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+  vim.bo[buf].modifiable = false
+  vim.bo[buf].bufhidden = "wipe"
+  vim.bo[buf].buftype = "nofile"
+
+  local ns = vim.api.nvim_create_namespace(ns_name)
+  for i, line_text in ipairs(lines) do
+    local row_hl = highlights[i]
+    if i == 1 then
+      vim.api.nvim_buf_add_highlight(buf, ns, "Comment", i - 1, 0, #line_text)
+    else
+      for _, h in ipairs(row_hl) do
+        vim.api.nvim_buf_add_highlight(buf, ns, "Function", i - 1, h.col, h.col + h.len)
+      end
+    end
+  end
+
+  local height = #lines
+  vim.cmd("botright " .. height .. "split")
+  local win = vim.api.nvim_get_current_win()
+  vim.api.nvim_win_set_buf(win, buf)
+  vim.wo[win].number = false
+  vim.wo[win].relativenumber = false
+  vim.wo[win].signcolumn = "no"
+  vim.wo[win].cursorline = false
+  vim.wo[win].winfixheight = true
+
+  local function close_help()
+    if vim.api.nvim_win_is_valid(win) then
+      vim.api.nvim_win_close(win, true)
+    end
+  end
+  vim.keymap.set("n", "q", close_help, { buffer = buf })
+  vim.keymap.set("n", "?", close_help, { buffer = buf })
+  vim.keymap.set("n", "<Esc>", close_help, { buffer = buf })
 end
 
 function M.close()
