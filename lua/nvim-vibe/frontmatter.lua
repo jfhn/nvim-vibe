@@ -18,10 +18,8 @@ function M.parse(content)
   local meta = {}
   local current_map_key = nil
 
-  for line in fm:gmatch("[^\n]*") do
-    if line == "" then
-      current_map_key = nil
-    elseif line:match("^  %S") and current_map_key then
+  for line in fm:gmatch("[^\n]+") do
+    if line:match("^  %S") and current_map_key then
       local key, val = line:match("^  (%S+):%s*(.*)$")
       if key then
         meta[current_map_key][key] = M._coerce(val)

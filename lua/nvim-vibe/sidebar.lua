@@ -1,6 +1,7 @@
 local core = require("nvim-vibe.core")
 local tasks = require("nvim-vibe.tasks")
 local tree = require("nvim-vibe.task_tree")
+local planner = require("nvim-vibe.planner")
 
 local M = {}
 
@@ -274,7 +275,11 @@ function M.open()
     local action = actions_ref[line]
     if not action or action.type ~= "task" then return end
     if not action.dir then return end
-    vim.notify("nvim-vibe: solve not yet implemented (Phase 4)", vim.log.levels.INFO)
+    local _, err = planner.solve(action.dir)
+    if err then
+      vim.notify("nvim-vibe: solve failed: " .. err, vim.log.levels.ERROR)
+    end
+    M.render()
   end, { buffer = sidebar_buf })
 
   vim.keymap.set("n", "gp", function()
@@ -285,7 +290,11 @@ function M.open()
       vim.notify("nvim-vibe: task not awaiting review", vim.log.levels.WARN)
       return
     end
-    vim.notify("nvim-vibe: approve not yet implemented (Phase 4)", vim.log.levels.INFO)
+    local _, err = planner.approve(action.dir)
+    if err then
+      vim.notify("nvim-vibe: approve failed: " .. err, vim.log.levels.ERROR)
+    end
+    M.render()
   end, { buffer = sidebar_buf })
 
   vim.keymap.set("n", "gr", function()
@@ -296,7 +305,11 @@ function M.open()
       vim.notify("nvim-vibe: task not awaiting review", vim.log.levels.WARN)
       return
     end
-    vim.notify("nvim-vibe: reject not yet implemented (Phase 4)", vim.log.levels.INFO)
+    local _, err = planner.reject(action.dir)
+    if err then
+      vim.notify("nvim-vibe: reject failed: " .. err, vim.log.levels.ERROR)
+    end
+    M.render()
   end, { buffer = sidebar_buf })
 
   vim.keymap.set("n", "q", M.close, { buffer = sidebar_buf })

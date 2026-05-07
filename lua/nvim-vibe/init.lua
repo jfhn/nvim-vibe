@@ -7,6 +7,8 @@ local terminal = require("nvim-vibe.terminal")
 local task_tree = require("nvim-vibe.task_tree")
 local task_runtime = require("nvim-vibe.task_runtime")
 local task_events = require("nvim-vibe.task_events")
+local backend_mod = require("nvim-vibe.backend")
+local planner_mod = require("nvim-vibe.planner")
 
 local M = {}
 
@@ -36,6 +38,8 @@ M.write_node = task_tree.write_node
 M.tree = task_tree
 M.runtime = task_runtime
 M.events = task_events
+M.backend = backend_mod
+M.planner = planner_mod
 
 M.on = hooks.register
 M.fire = hooks.fire
@@ -61,6 +65,8 @@ function M.setup(opts)
   end
 
   terminal.setup(opts.terminal)
+
+  backend_mod.register("stub", require("nvim-vibe.backend.stub"))
 
   require("telescope").load_extension("nvim-vibe")
 end
