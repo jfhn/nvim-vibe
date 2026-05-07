@@ -49,6 +49,9 @@ function M.parse(content)
   end
 
   local body = content:sub(end_pos + 5)
+  if body:sub(1, 1) == "\n" then
+    body = body:sub(2)
+  end
   return meta, body
 end
 
